@@ -7,3 +7,4 @@ rapidfuzz
 fastapi
 uvicorn[standard]
 orjson
+pydantic

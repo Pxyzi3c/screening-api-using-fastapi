@@ -1,41 +1,79 @@
 import re
+import logging
 import pandas as pd
 from os import environ
-from sqlalchemy import create_engine, Engine
-from sqlalchemy import URL
+from typing import List, Optional
+
+from sqlalchemy import create_engine
+from sqlalchemy.engine import URL
+
 from rapidfuzz import fuzz
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Query, Request, HTTPException
 from fastapi.responses import ORJSONResponse
+from starlette.status import HTTP_200_OK, HTTP_404_NOT_FOUND, HTTP_422_UNPROCESSABLE_ENTITY
+from pydantic import BaseModel
 
-# App name
-screening_app = FastAPI()
+# -----------------------------
+# Response Schema
+# -----------------------------
 
-# Helper functions
+class Sanction(BaseModel):
+    ent_num: int
+    sdn_name: str
+    sdn_type: str
+    complete_address: str
+    country: str
+    add_remarks: str
+    cleaned_name: str
+    similarity_score: Optional[float]
+
+# -----------------------------
+# App Initialization
+# -----------------------------
+
+screening_app = FastAPI(
+    title="OFAC Sanctions Screening API",
+    version="0.0.1",
+    default_response_class=ORJSONResponse
+)
+
+# -----------------------------
+# Logging Configuration
+# -----------------------------
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(message)s"
+)
+logger = logging.getLogger("screening_api")
+
+# -----------------------------
+# Utility Functions
+# -----------------------------
+
+def load_env_variable(key: str) -> str:
+    value = environ.get(key)
+
+    if not value:
+        raise RuntimeError(f"Missing environment variable: {key}")
+    return value
+
 def get_consolidated_sanctions() -> pd.DataFrame:
-    # Get environment variables
-    HOST = environ["DB_HOST"]
-    PORT = environ["DB_PORT"]
-    NAME = environ["DB_NAME"]
-    USER = environ["DB_USER"]
-    PASSWORD = environ["DB_PASS"]
-
     # Define connection string to PostgreSQL database
     connection_string = URL.create(
         drivername="postgresql+psycopg2",
-        database=NAME,
-        host=HOST,
-        port=PORT,
-        username=USER,
-        password=PASSWORD
+        database=load_env_variable("DB_NAME"),
+        host=load_env_variable("DB_HOST"),
+        port=load_env_variable("DB_PORT"),
+        username=load_env_variable("DB_USER"),
+        password=load_env_variable("DB_PASS"),
     )
 
     # Create engine object
     engine = create_engine(connection_string)
 
     # Query database
-    df = pd.read_sql("SELECT * FROM ofac_consolidated", con=engine)
-
-    return df
+    return pd.read_sql("SELECT * FROM ofac_consolidated", con=engine)
 
 def standardize_name(name: str) -> str:
     clean_name = re.sub("[/-]", " ", name).upper()
@@ -51,41 +89,65 @@ def get_name_similarity(name1: str, name2: str, sort_names: bool = False) -> flo
 
     try:
         return round(fuzz.ratio(name1, name2) / 100, 2)
-    except:
+    except Exception as e:
+        logger.warning(f"Similarity comparison failed: {e}")
         return None
 
 def get_full_name(fname: str, lname: str):
-    full_name = fname.title() + " " + lname.title()
-    return full_name
+    return f"{fname.title()} {lname.title()}"
 
+# -----------------------------
+# Request Logging Middleware
+# -----------------------------
+
+@screening_app.middleware("http")
+async def log_requests(request: Request, call_next):
+    request_id = id(request)
+    logger.info(f"[REQ {request_id}] {request.method} {request.url}")
+    
+    response = await call_next(request)
+
+    logger.info(f"[RES] {request_id} Status: {response.status_code}")
+    return response
+
+# -----------------------------
 # Routes
-@screening_app.get("/")
+# -----------------------------
+
+@screening_app.get("/", status_code=HTTP_200_OK)
 async def root():
     name = get_full_name("Harvy Jones", "Pontillas")
-    result = {
+
+    return {
         "status": "success",
         "response": {
             "name": name,
-            "app_title": "Simple Screening API",
-            "version": "0.0.1"
+            "app_title": screening_app.title,
+            "version": screening_app.version
         }
     }
     
-    return result
-
-@screening_app.get("/screen")
-async def screen(name: str, threshold: float = 0.7):
+@screening_app.get("/screen", response_model=List[Sanction], status_code=HTTP_200_OK)
+async def screen(
+    name: str = Query(..., example="AEROCARIBBEAN AIRLINES"), 
+    threshold: float = Query(0.7, ge=0.0, le=1.0)
+) :
     cleaned_name = standardize_name(name)
     sanctions = get_consolidated_sanctions()
     
     # Sanction name
     sanctions["similarity_score"] = sanctions["cleaned_name"].apply(
         get_name_similarity, args=(cleaned_name,))
-    filtered_sanctions = sanctions[sanctions["similarity_score"] >= threshold]
     
+    filtered_sanctions = sanctions[sanctions["similarity_score"] >= threshold]
     result = filtered_sanctions.fillna("-").to_dict(orient="records")
 
-    return {
-        "status": "success",
-        "response": result
-    }
+    logger.info(f"[SCREEN] Input: {name}, Threshold: {threshold}, Results: {len(result)}")
+
+    if len(result) == 0:
+        raise HTTPException(
+            status_code=HTTP_404_NOT_FOUND,
+            detail="No sanctions found"
+        )
+    
+    return result
