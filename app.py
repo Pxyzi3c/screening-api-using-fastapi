@@ -13,6 +13,8 @@ from fastapi.responses import ORJSONResponse
 from starlette.status import HTTP_200_OK, HTTP_404_NOT_FOUND, HTTP_422_UNPROCESSABLE_ENTITY
 from pydantic import BaseModel
 
+from database.database import get_consolidated_sanctions
+
 # -----------------------------
 # Response Schema
 # -----------------------------
@@ -50,31 +52,6 @@ logger = logging.getLogger("screening_api")
 # -----------------------------
 # Utility Functions
 # -----------------------------
-
-def load_env_variable(key: str) -> str:
-    value = environ.get(key)
-
-    if not value:
-        raise RuntimeError(f"Missing environment variable: {key}")
-    return value
-
-def get_consolidated_sanctions() -> pd.DataFrame:
-    # Define connection string to PostgreSQL database
-    connection_string = URL.create(
-        drivername="postgresql+psycopg2",
-        database=load_env_variable("DB_NAME"),
-        host=load_env_variable("DB_HOST"),
-        port=load_env_variable("DB_PORT"),
-        username=load_env_variable("DB_USER"),
-        password=load_env_variable("DB_PASS"),
-    )
-
-    # Create engine object
-    engine = create_engine(connection_string)
-
-    # Query database
-    return pd.read_sql("SELECT * FROM ofac_consolidated", con=engine)
-
 def standardize_name(name: str) -> str:
     clean_name = re.sub("[/-]", " ", name).upper()
     clean_name = re.sub("[^A-Z0-9\\s]", "", clean_name)
@@ -134,6 +111,7 @@ async def screen(
 ) :
     cleaned_name = standardize_name(name)
     sanctions = get_consolidated_sanctions()
+    print(sanctions.head())
     
     # Sanction name
     sanctions["similarity_score"] = sanctions["cleaned_name"].apply(

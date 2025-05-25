@@ -1,35 +1,54 @@
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.engine import URL
 
-from os import environ
+import os
+from typing import Generator
+import pandas as pd
 
-def load_env_variable(key: str) -> str:
-    value = environ.get(key)
-
-    if not value:
-        raise RuntimeError(f"Missing environment variable: {key}")
+# -------------------------------
+# Environment Loader (robust)
+# -------------------------------
+def get_env_var(key: str) -> str:
+    value = os.getenv(key)
+    if value is None:
+        raise EnvironmentError(f"Environment variable '{key}' is missing.")
     return value
 
-connection_string = URL.create(
+# -------------------------------
+# PostgreSQL Connection URL
+# -------------------------------
+DATABASE_URL = URL.create(
     drivername="postgresql+psycopg2",
-    database=load_env_variable("DB_NAME"),
-    host=load_env_variable("DB_HOST"),
-    port=load_env_variable("DB_PORT"),
-    username=load_env_variable("DB_USER"),
-    password=load_env_variable("DB_PASS"),
+    host=get_env_var("DB_HOST"),
+    port=get_env_var("DB_PORT"),
+    database=get_env_var("DB_NAME"),
+    username=get_env_var("DB_USER"),
+    password=get_env_var("DB_PASS"),
 )
 
-"""
-The engine manages the connection to the database and handles query execution.
-"""
-engine = create_engine(connection_string)
+# -------------------------------
+# Engine & Session Factory
+# -------------------------------
+engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-# Database dependency for routes
-def get_db():
+# -------------------------------
+# Dependency for FastAPI
+# -------------------------------
+def get_db() -> Generator[Session, None, None]:
+    """
+    Yields a database session to be used in FastAPI routes.
+    Ensures clean-up after use.
+    """
     db = SessionLocal()
     try:
         yield db
     finally:
         db.close()
+
+# -------------------------
+# DB Query (used by API logic)
+# -------------------------
+def get_consolidated_sanctions() -> pd.DataFrame:
+    return pd.read_sql("SELECT * FROM ofac_consolidated", con=engine)
