@@ -1,13 +1,7 @@
-import re
 import logging
-from typing import List
 
-from sqlalchemy.engine import URL
-
-from rapidfuzz import fuzz
-from fastapi import FastAPI, Query, Request, HTTPException
+from fastapi import FastAPI, Request
 from fastapi.responses import ORJSONResponse
-from starlette.status import HTTP_200_OK, HTTP_404_NOT_FOUND
 
 from routes.screening import router as screening_router
 

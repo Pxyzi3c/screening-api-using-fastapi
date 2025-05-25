@@ -1,38 +1,16 @@
 import re
 import logging
-from typing import List, Optional
+from typing import List
 
-import pandas as pd
 from fastapi import APIRouter, Query, HTTPException, status
 from database.database import get_consolidated_sanctions
 from schemas.sanction import SanctionSchema
-from rapidfuzz import fuzz
+
+from core.fuzz_ratio import get_name_similarity
+from core.utils import get_full_name, standardize_name
 
 logger = logging.getLogger("screening_api")
 router = APIRouter()
-
-# -----------------------------
-# Utility Functions (can move to core later)
-# -----------------------------
-
-def standardize_name(name: str) -> str:
-    clean_name = re.sub(r"[/-]", " ", name).upper()
-    clean_name = re.sub(r"[^A-Z0-9\s]", "", clean_name)
-    clean_name = re.sub(r"\s+", " ", clean_name).strip()
-    return clean_name
-
-def get_name_similarity(name1: str, name2: str, sort_names: bool = False) -> Optional[float]:
-    if sort_names:
-        name1 = " ".join(sorted(name1.split()))
-        name2 = " ".join(sorted(name2.split()))
-    try:
-        return round(fuzz.ratio(name1, name2) / 100, 2)
-    except Exception as e:
-        logger.warning(f"Similarity comparison failed: {e}")
-        return None
-
-def get_full_name(fname: str, lname: str):
-    return f"{fname.title()} {lname.title()}"
 
 # -----------------------------
 # Routes

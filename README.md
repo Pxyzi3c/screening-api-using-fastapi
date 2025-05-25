@@ -73,7 +73,7 @@ Follow these steps to set up your Python development environment:
 2.  **Run the API:**
     To start the FastAPI application, use the following command in your terminal (make sure your virtual environment is activated and you are in the project directory):
     ```bash
-    uvicorn app:screening_app --reload
+    uvicorn app.main:screening_app --reload
     ```
     * `app`: Refers to the `app.py` file.
     * `screening_app`: Refers to the FastAPI application instance you will create within `app.py`.
