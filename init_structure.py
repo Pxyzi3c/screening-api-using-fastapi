@@ -1,3 +1,5 @@
+# NOTE: Only run this script once
+
 import os
 
 folders = [
@@ -7,7 +9,8 @@ folders = [
     "sanctions/models",
     "sanctions/routes",
     "sanctions/schemas",
-    "models"
+    "models",
+    "schemas"
 ]
 
 files = [
@@ -21,7 +24,8 @@ files = [
     "sanctions/routes/sanction.py",
     "sanctions/schemas/__init__.py",
     "sanctions/schemas/sanction.py",
-    "models/__init__.py"
+    "models/__init__.py",
+    "schemas/sanction.py"
 ]
 
 for folder in folders:

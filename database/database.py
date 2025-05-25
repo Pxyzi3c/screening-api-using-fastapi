@@ -1,23 +1,23 @@
+import os
+import pandas as pd
+from typing import Generator
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.engine import URL
 
-import os
-from typing import Generator
-import pandas as pd
-
-# -------------------------------
-# Environment Loader (robust)
-# -------------------------------
+# --------------------------------------------------
+# Environment Variable Loader (safe and minimal)
+# --------------------------------------------------
 def get_env_var(key: str) -> str:
     value = os.getenv(key)
+
     if value is None:
-        raise EnvironmentError(f"Environment variable '{key}' is missing.")
+        raise EnvironmentError(f"Missing required environment variable: '{key}'")
     return value
 
-# -------------------------------
-# PostgreSQL Connection URL
-# -------------------------------
+# --------------------------------------------------
+# PostgreSQL Connection URL Construction
+# --------------------------------------------------
 DATABASE_URL = URL.create(
     drivername="postgresql+psycopg2",
     host=get_env_var("DB_HOST"),
@@ -27,28 +27,25 @@ DATABASE_URL = URL.create(
     password=get_env_var("DB_PASS"),
 )
 
-# -------------------------------
-# Engine & Session Factory
-# -------------------------------
+# --------------------------------------------------
+# SQLAlchemy Engine and Session Factory
+# --------------------------------------------------
 engine = create_engine(DATABASE_URL, pool_pre_ping=True)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 
-# -------------------------------
-# Dependency for FastAPI
-# -------------------------------
+# --------------------------------------------------
+# Dependency for FastAPI Injection
+# --------------------------------------------------
 def get_db() -> Generator[Session, None, None]:
-    """
-    Yields a database session to be used in FastAPI routes.
-    Ensures clean-up after use.
-    """
     db = SessionLocal()
+
     try:
         yield db
     finally:
         db.close()
 
-# -------------------------
-# DB Query (used by API logic)
-# -------------------------
+# --------------------------------------------------
+# Public Data Query - Sanctions Table
+# --------------------------------------------------
 def get_consolidated_sanctions() -> pd.DataFrame:
     return pd.read_sql("SELECT * FROM ofac_consolidated", con=engine)

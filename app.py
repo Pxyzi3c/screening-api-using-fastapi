@@ -1,33 +1,16 @@
 import re
 import logging
-import pandas as pd
-from os import environ
-from typing import List, Optional
+from typing import List
 
-from sqlalchemy import create_engine
 from sqlalchemy.engine import URL
 
 from rapidfuzz import fuzz
 from fastapi import FastAPI, Query, Request, HTTPException
 from fastapi.responses import ORJSONResponse
-from starlette.status import HTTP_200_OK, HTTP_404_NOT_FOUND, HTTP_422_UNPROCESSABLE_ENTITY
-from pydantic import BaseModel
+from starlette.status import HTTP_200_OK, HTTP_404_NOT_FOUND
 
 from database.database import get_consolidated_sanctions
-
-# -----------------------------
-# Response Schema
-# -----------------------------
-
-class Sanction(BaseModel):
-    ent_num: int
-    sdn_name: str
-    sdn_type: str
-    complete_address: str
-    country: str
-    add_remarks: str
-    cleaned_name: str
-    similarity_score: Optional[float]
+from schemas.sanction import SanctionSchema
 
 # -----------------------------
 # App Initialization
@@ -104,7 +87,7 @@ async def root():
         }
     }
     
-@screening_app.get("/screen", response_model=List[Sanction], status_code=HTTP_200_OK)
+@screening_app.get("/screen", response_model=List[SanctionSchema], status_code=HTTP_200_OK)
 async def screen(
     name: str = Query(..., example="AEROCARIBBEAN AIRLINES"), 
     threshold: float = Query(0.7, ge=0.0, le=1.0)
